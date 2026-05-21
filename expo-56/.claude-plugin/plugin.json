@@ -1,0 +1,21 @@
+{
+  "name": "expo-56",
+  "version": "0.1.0",
+  "description": "Authoritative offline reference for Expo SDK 56 (React Native 0.85, React 19.2, Hermes v1). One skill, 20 bundled API references, covering both building new apps and migrating from SDK 55. Point-in-time snapshot (SDK 56 beta, 2026-05-22).",
+  "author": {
+    "name": "Mahdi Salmanzade",
+    "url": "https://github.com/mahdi-salmanzade"
+  },
+  "homepage": "https://github.com/mahdi-salmanzade/expo56-skill",
+  "repository": "https://github.com/mahdi-salmanzade/expo56-skill",
+  "license": "MIT",
+  "keywords": [
+    "expo",
+    "expo-sdk-56",
+    "react-native",
+    "claude-code",
+    "claude-skill",
+    "expo-router",
+    "eas"
+  ]
+}

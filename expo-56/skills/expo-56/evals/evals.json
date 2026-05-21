@@ -1,0 +1,88 @@
+{
+  "skill_name": "expo-56",
+  "methodology": "This skill's value proposition is preventing hallucination on SDK 56 APIs that postdate model training. For the benchmark signal to mean anything, the WITHOUT-skill (baseline) runs MUST be executed with web tools (WebFetch/WebSearch) disabled — otherwise the baseline simply reads the live docs and the comparison measures 'offline convenience', not anti-hallucination. The with-skill runs should also be offline so both configs are evaluated on the same footing. Run >=5 iterations per config; the 3-run samples in the workspace show variance (e.g. +-46%) too high to draw conclusions from. Re-verify expected API names against live docs before trusting any 'names the exact package' assertion (see typegen-cli note).",
+  "evals": [
+    {
+      "id": 0,
+      "name": "build-audio-upload",
+      "prompt": "I'm building a new Expo SDK 56 app with TypeScript and expo-router. Write me a screen component that records a short audio clip from the microphone, then uploads the recorded file to https://api.example.com/upload with a visible upload progress percentage. Use the correct SDK 56 APIs and tell me which packages to install and any app.json config I need.",
+      "iteration": 1,
+      "assertions": [
+        {"text": "Uses expo-audio for recording (useAudioRecorder / RecordingPresets), not expo-av"},
+        {"text": "Does NOT import or use expo-av (removed in SDK 56)"},
+        {"text": "Uses the SDK 56 expo-file-system upload task API (file.createUploadTask) with progress"},
+        {"text": "Installs packages with `npx expo install`"},
+        {"text": "Mentions microphone permission (config plugin / app.json)"},
+        {"text": "Plausibly correct TypeScript expo-router screen (default export component)"}
+      ]
+    },
+    {
+      "id": 1,
+      "name": "migrate-55-to-56",
+      "prompt": "I'm upgrading my Expo app from SDK 55 to SDK 56. It uses expo-router with a bunch of `import { useNavigation } from '@react-navigation/native'` calls, @expo/vector-icons for icons, expo-av for a video player, and it calls FileSystem.copyAsync and FileSystem.moveAsync in a few places. Walk me through everything I need to change and give me the exact commands and codemods to run.",
+      "iteration": 1,
+      "assertions": [
+        {"text": "Includes `npx expo install expo@^56.0.0 --fix` (and ideally expo-doctor)"},
+        {"text": "Mentions the expo-router React Navigation removal + codemod `npx expo-codemod sdk-56-expo-router-react-navigation-replace`"},
+        {"text": "Mentions migrating @expo/vector-icons to scoped @react-native-vector-icons/* (ideally the codemod)"},
+        {"text": "Says expo-av is removed and to migrate to expo-video / expo-audio"},
+        {"text": "Notes FileSystem copy()/move() are now async (or to use copySync()/moveSync())"},
+        {"text": "Does not invent fake APIs or give stale advice as current"}
+      ]
+    },
+    {
+      "id": 2,
+      "name": "router-protected-route",
+      "prompt": "In my Expo SDK 56 app using expo-router, I want authenticated-only routes: if there's no session token, the user should be redirected to /sign-in, otherwise they see the (app) group. Store the session token securely. Show me the layout and auth context code.",
+      "iteration": 1,
+      "assertions": [
+        {"text": "Uses expo-router (Stack, ideally Stack.Protected or Redirect), not raw React Navigation"},
+        {"text": "Stores the session token with expo-secure-store"},
+        {"text": "Auth/session context gates the (app) group and redirects to /sign-in when unauthenticated"},
+        {"text": "Coherent code with correct import paths (expo-router, expo-secure-store)"}
+      ]
+    },
+    {
+      "id": 3,
+      "name": "typegen-cli",
+      "prompt": "I'm authoring a Swift Expo native module in my SDK 56 project and want its TypeScript interface auto-generated and kept in sync as I edit the Swift file. Which exact Expo package and CLI command do I use? And what's the difference between generating the interface for a standalone module versus for inline modules defined inside a project?",
+      "iteration": 2,
+      "note": "WEAK DIFFERENTIATOR + UNVERIFIED EXPECTED ANSWER. 2026-05-22 spot-check: (1) the `expo-type-information` package name and the `module-interface`/`inline-modules-interface`/`short-module-interface` command names could NOT be confirmed on npm or the docs index — only the general capability (CLI typegen for inline modules, watch mode) is documented; (2) the without-skill baseline produced the identical package + command names, so the skill adds ~nothing here and both configs may be hallucinating the same name. Before keeping this eval: confirm the real package/command names from live docs and update the assertions, OR replace this eval with a long-tail API that IS verifiable (e.g. expo-widgets, which the spot-check confirmed). The assertions below reward emitting the unverified name and should NOT be trusted until confirmed.",
+      "assertions": [
+        {"text": "Identifies the correct typegen package (currently believed to be `expo-type-information` — VERIFY against live docs before scoring)"},
+        {"text": "Names the standalone-module command (believed `module-interface`, Swift file/module-root paths — VERIFY)"},
+        {"text": "Names the inline-module command(s) (believed `inline-modules-interface`/`short-module-interface` — VERIFY)"},
+        {"text": "States the commands support watch mode for auto-regeneration"},
+        {"text": "If uncertain about exact names, flags them as needing verification rather than asserting a fabricated name with false confidence"}
+      ]
+    },
+    {
+      "id": 4,
+      "name": "contacts-builder",
+      "prompt": "In Expo SDK 56, using the new (non-legacy) expo-contacts API, fetch all contacts but only their full name and phone numbers, sorted by family name, limited to 50. Show me the exact code with correct imports.",
+      "iteration": 2,
+      "note": "Obscure/long-tail API: redesigned Contacts Builder/getAllDetails surface.",
+      "assertions": [
+        {"text": "Uses the new Contact.getAllDetails(fields, options) API, not the legacy Contacts.getContactsAsync"},
+        {"text": "Uses the ContactField enum for field selection (FULL_NAME, PHONES)"},
+        {"text": "Passes query options with limit: 50 and sortOrder via ContactsSortOrder (FamilyName)"},
+        {"text": "Imports from 'expo-contacts' (the new API), NOT from 'expo-contacts/legacy'"},
+        {"text": "Does not fall back to the deprecated getContactsAsync pattern as the primary answer"}
+      ]
+    },
+    {
+      "id": 5,
+      "name": "ios-widget-timeline",
+      "prompt": "Set up an iOS home-screen widget in my Expo SDK 56 app using the stable expo-widgets API. Show me the app.json config-plugin block (small + medium widget families) and the createWidget code with a timeline of entries. Which package do I install?",
+      "iteration": 2,
+      "note": "Obscure/long-tail API: stable expo-widgets, brand-new in SDK 56.",
+      "assertions": [
+        {"text": "Says to install the `expo-widgets` package"},
+        {"text": "app.json config-plugin block with widgets array, supportedFamilies (systemSmall + systemMedium), bundleIdentifier/groupIdentifier"},
+        {"text": "Uses createWidget(name, (props, environment) => ...) from expo-widgets"},
+        {"text": "Builds a timeline using updateTimeline / WidgetTimelineEntry ({ date, props }) (not a fabricated TimelineProvider API)"},
+        {"text": "Notes iOS-only and requires a development build (not Expo Go)"}
+      ]
+    }
+  ]
+}
