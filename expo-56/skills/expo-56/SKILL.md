@@ -23,9 +23,9 @@ description: >-
 
 # Expo SDK 56
 
-> **Verified against the live Expo docs and the SDK 56 changelog as of 2026-05-22.** Bundled native-dep versions below (reanimated `4.3.1`, screens `4.25.1`, React `19.2.3`, etc.) are SDK 56.0 pins — re-verify against `npx expo install --fix` output after any SDK patch/minor bump, since these references are a point-in-time snapshot.
+> **Verified against the Expo monorepo source (`expo/expo`) and the SDK 56 changelog as of 2026-07-06 — SDK 56 is now stable (released 2026-06-01, current patch 56.0.5).** Bundled native-dep versions below are the frozen SDK 56 pins from the versioned schema (`docs/public/static/schemas/v56.0.0/native-modules.json`) — re-verify against `npx expo install --fix` output after any SDK patch/minor bump, since these references are a point-in-time snapshot.
 >
-> **Verification status (spot-check 2026-05-22):** Independently re-confirmed against live docs — core versions (RN 0.85.2, React 19.2.3, Hermes v1, Node ≥20.19.4), `expo-contacts` (`Contact.getAllDetails` / `ContactField` / `ContactsSortOrder`), `expo-file-system` (async `copy`/`move` + `*Sync` + `File`/`Directory`/`Paths`), and `expo-widgets` (`createWidget` / `updateTimeline`). **Not yet confirmed:** the `expo-type-information` package name and its `module-interface` / `inline-modules-interface` / `short-module-interface` command names — the *capability* (CLI TypeScript generation for inline modules with watch mode) is documented, but these exact names were not found on npm or the docs index. Treat them as unverified; check `npx <pkg> --help` / the live inline-modules reference before relying on them. SDK 56 was in **beta** at this date, so some package versions/APIs may still shift before stable.
+> **Verification status (source audit 2026-07-06):** Re-confirmed against the pinned v56.0.0 schema and package sources — RN **0.85.3**, React 19.2.3, react-native-reanimated **4.3.1** (+ separate `react-native-worklets` 0.8.3), gesture-handler **~2.31.1**, screens **4.25.2**, safe-area-context ~5.7.0, svg 15.15.4; Hermes v1; Node ≥20.19.4. **`expo-type-information` is confirmed real** — package v0.0.5 at `packages/expo-type-information`, CLI binary `expo-type-information`, with the exact commands `module-interface` / `inline-modules-interface` / `short-module-interface` (docs: `modules/type-generation-reference.mdx`, `modules/inline-modules-reference.mdx`). Note: the unversioned `main` branch is already tracking SDK 57 (RN 0.86, screens nightly, Node 22.13) — ignore those; the values here are the frozen SDK 56 pins.
 
 This skill covers **both** building new SDK 56 apps with correct, current APIs **and** migrating existing apps from SDK 55. SDK 56 shipped many breaking changes and new defaults that postdate model training — treat the bundled `references/` files as ground truth and consult them before writing non-trivial code. Don't rely on memory for Expo APIs; verify against the relevant reference.
 
@@ -57,7 +57,7 @@ If you write code from memory for any of these, it will likely be wrong. Check t
 | Upgrade | `npx expo install expo@^56.0.0 --fix` then `npx expo-doctor@latest` |
 | Expo Go | **Not on App Store / Play Store for SDK 56** — install via CLI / TestFlight beta / `eas go` (see `references/19`) |
 
-Key bundled native dep versions: reanimated `4.3.1` (needs `react-native-worklets`), gesture-handler `~2.31.1` (use the `Gesture.Pan()` builder API), screens `4.25.1`, safe-area-context `~5.7.0`, svg `15.15.4`. Details in `references/17`.
+Key bundled native dep versions: reanimated `4.3.1` (needs `react-native-worklets` `0.8.3`), gesture-handler `~2.31.1` (use the `Gesture.Pan()` builder API), screens `4.25.2`, safe-area-context `~5.7.0`, svg `15.15.4`. Details in `references/17`.
 
 ## How to use this skill
 
@@ -113,10 +113,10 @@ When upgrading an existing app, work through this. Full detail in `references/01
 
 ## Known discrepancies (read before trusting a single source)
 
-These were flagged while compiling the references because the live docs lagged the SDK 56 changelog. When one is load-bearing, verify against the current docs page:
-- **`android.usePrecompiledHeaders`**: named in the changelog but not surfaced on the live `expo-build-properties` page; closest documented keys are `usePrecompiledModules` / `buildReactNativeFromSource`. (`references/16` §5, `references/10` §2)
-- **gesture-handler API**: the live docs render a newer 3.x `usePanGesture()` hook, but SDK 56 pins 2.31.x whose canonical API is the `Gesture.Pan()` builder. Use the builder API. (`references/17`)
-- **`expo-type-information` / typegen CLI**: `references/04` documents this as the package + `module-interface` / `inline-modules-interface` / `short-module-interface` commands for auto-generating TypeScript from Swift/Kotlin native modules. The capability is real and documented (CLI typegen for inline modules, watch mode), but as of the 2026-05-22 spot-check the exact package name and command names could not be confirmed on npm or the docs index. Before instructing the user, verify the installed package and run `npx <pkg> --help`; do not present the names as certain.
+The three previously-open items below were resolved by auditing the SDK 56 package sources (2026-07-06); kept here with their outcomes because they still catch out anyone reading only the rendered docs:
+- **`android.usePrecompiledHeaders`**: **confirmed real** — it is defined in the `expo-build-properties` plugin config type (`pluginConfig.ts`) and implemented in `android.ts`, it's just absent from the auto-generated docs page. Use it. (Note `usePrecompiledModules` is the separate **iOS** key.) (`references/16` §5, `references/10` §2)
+- **gesture-handler API**: SDK 56 pins 2.31.x whose canonical API is the `Gesture.Pan()` builder (confirmed by the v56 docs and monorepo examples). Ignore any newer `usePanGesture()` hook shown on the unversioned docs. Use the builder API. (`references/17`)
+- **`expo-type-information` / typegen CLI**: **confirmed real** — package v0.0.5 (`packages/expo-type-information`), CLI binary `expo-type-information`, with commands `module-interface` / `inline-modules-interface` / `short-module-interface` (`inline-modules-interface` takes `--app-json`). Docs: `modules/type-generation-reference.mdx` + `modules/inline-modules-reference.mdx`. (`references/04`)
 - Some changelog-only items (EAS per-step timing, "EAS Observe coming soon") have no dedicated docs page yet. (`references/10`, `references/18`)
 
 ## Conventions when generating code

@@ -12,7 +12,7 @@ These are the exact version specifiers from Expo's `bundledNativeModules.json` o
 | --- | --- | --- |
 | react-native-reanimated | `4.3.1` | 4.x |
 | react-native-gesture-handler | `~2.31.1` | 2.x |
-| react-native-screens | `4.25.1` | 4.25.2 |
+| react-native-screens | `4.25.2` | 4.25.2 |
 | react-native-safe-area-context | `~5.7.0` | 5.8.0 |
 | react-native-svg | `15.15.4` | 15.15.5 |
 
@@ -280,7 +280,7 @@ Sources:
 
 ---
 
-## react-native-screens (SDK 56: 4.25.1)
+## react-native-screens (SDK 56: 4.25.2)
 
 Exposes native navigation container components to React Native. It is a dependency for full-featured navigation libraries (React Navigation, Expo Router) rather than something you usually use directly. Provides native navigation primitives across iOS, Android, tvOS, visionOS, Windows, and Web.
 
