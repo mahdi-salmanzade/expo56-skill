@@ -1,6 +1,36 @@
 # Expo Router (SDK 56) — Knowledge Base Reference
 
-> Domain: **Expo Router** for Expo SDK 56. SDK 56 is a **MAJOR** release for Router: it no longer depends on React Navigation, adds an experimental Native Stack v5, experimental Android toolbar support, streaming SSR for web, data-loader helpers, and customizable Suspense fallbacks.
+> Domain: **Expo Router** for Expo SDK 56. SDK 56 is a **MAJOR** release for Router: it no longer depends on React Navigation, adds the alpha `ExperimentalStack`, experimental Android toolbar support, streaming SSR for web, data-loader helpers, and customizable Suspense fallbacks.
+>
+> **Version pins (SDK 56):** `expo-router ~56.2.16` · `expo-server ~56.0.5` · `react-native-screens ~4.26.0` · `react-native-safe-area-context ~5.7.0` · `react-native-web ~0.21.0`. Source: `packages/expo/bundledNativeModules.json` on the `sdk-56` release branch — this is what `npx expo install` actually resolves against. (Do **not** use `docs/public/static/schemas/v56.0.0/native-modules.json`: it is frozen at the GA cut and still says `expo-router ~56.2.9` / `react-native-screens 4.25.2`.) The SDK 56 line is actively patched and `56.2.16` carries a large number of backports — read the delta section at the end of this file before assuming a feature requires SDK 57.
+
+---
+
+## Import cheat sheet (get these wrong and nothing compiles)
+
+Everything below is verified against `packages/expo-router/src/exports.ts`, `src/index.tsx` and the package's root subpath shim files at the SDK 56 cut. Note: `expo-router` ships **no** `package.json#exports` map in either 56.x or 57.x — every subpath resolves through a root shim file (`head.js`, `drawer.js`, `server.js`, `stack.js`, `tabs.js`, `js-stack.js`, `js-tabs.js`, `js-top-tabs.js`, `react-navigation.js`, `html.js`, `unstable-native-tabs.js`, `testing-library.js`, `ui.js`, `unstable-split-view.js`) or a directory (`rsc/`). Verified by unpacking `expo-router@56.2.9`, `56.2.16`, `57.0.0` and `57.0.8`.
+
+| Symbol | Correct import | Common wrong guess |
+|---|---|---|
+| `Stack`, `Link`, `Slot`, `Navigator`, `router`, `useRouter`, hooks | `from 'expo-router'` | — |
+| `Tabs` (JS tabs) | `from 'expo-router/js-tabs'` | ⚠️ `from 'expo-router'` — still exported, but marked `@deprecated Use 'import { Tabs } from 'expo-router/js-tabs'' instead.` (`build/exports.d.ts:41`) |
+| `ExperimentalStack` | `from 'expo-router'` | `'expo-router/experimental-stack'` |
+| `NativeTabs` (+ `NativeTabTrigger`) | `from 'expo-router/unstable-native-tabs'` | ❌ `from 'expo-router'` — **not** a root export |
+| `Drawer` | `from 'expo-router/drawer'` | ❌ `from 'expo-router'` |
+| `Stack as JsStack` (JS stack) | `from 'expo-router/js-stack'` | `'@react-navigation/stack'` |
+| `createStaticLoader`, `createServerLoader`, `LoaderFunction`, `GenerateMetadataFunction`, `ImmutableRequest`, `Metadata` | `from 'expo-router/server'` | ❌ `from 'expo-router'` |
+| `useLoaderData`, `SuspenseFallbackProps` | `from 'expo-router'` | `'expo-router/server'` |
+| `StatusError`, `origin`, `environment`, `setResponseHeaders` | `from 'expo-server'` | `'expo-router/server'` |
+| `Head` | `default` export of `'expo-router/head'` | named import |
+| `ScrollViewStyleReset`, `useServerDocumentContext` | `from 'expo-router/html'` | `'expo-router'` |
+| `ThemeProvider`, `DarkTheme`, `DefaultTheme`, `useTheme`, `useRoute`, `useNavigation` | `from 'expo-router'` | ❌ `'@react-navigation/native'` — hard bundler error in SDK 56. ⚠️ `'expo-router/react-navigation'` works but every one of these six is `@deprecated Import X from 'expo-router' instead. Will be removed in a future SDK.` (`build/react-navigation/{native,core}/index.d.ts`) |
+
+Inside a `NativeTabs` layout, use the **compound** form — `NativeTabs.Trigger`, `NativeTabs.Trigger.Label`, `.Icon`, `.Badge`, `.VectorIcon`, `NativeTabs.BottomAccessory`. `expo-router/unstable-native-tabs` exports only `NativeTabs` and `NativeTabTrigger` as values (`packages/expo-router/src/native-tabs/index.ts`), so the standalone `Icon` / `Label` / `Badge` imports the SDK 54 docs show are **no longer re-exported from that subpath**. They are not gone: they moved to the **`expo-router` root** (`export { Badge, Icon, Label, VectorIcon } from './primitives'`, `build/exports.d.ts:33`), and `NativeTabs.Trigger.Label` / `.Icon` / `.Badge` / `.VectorIcon` are aliases of exactly those components. `Stack.Toolbar` composition uses the same primitives.
+
+```tsx
+import { Icon, Label, Badge, VectorIcon } from 'expo-router';   // ✅ root
+import { Icon } from 'expo-router/unstable-native-tabs';        // ❌ not exported
+```
 
 ---
 
@@ -33,10 +63,18 @@ The codemod handles most of the import rewriting automatically; the full migrati
 | SDK 55 import | SDK 56 import |
 |---|---|
 | `@react-navigation/native` | `expo-router/react-navigation` |
+| `@react-navigation/core` | `expo-router/react-navigation` |
+| `@react-navigation/elements` | `expo-router/react-navigation` |
+| `@react-navigation/routers` | `expo-router/react-navigation` |
 | `@react-navigation/stack` | `expo-router/js-stack` |
 | `@react-navigation/bottom-tabs` | `expo-router/js-tabs` |
 | `@react-navigation/material-top-tabs` | `expo-router/js-top-tabs` |
-| Native Stack & Drawer | **No direct equivalent** — use the `Stack` and `Drawer` layouts instead |
+| `@react-navigation/native-stack` | **No direct equivalent** — use the `Stack` layout |
+| `@react-navigation/drawer` | **No direct equivalent** — use the `Drawer` layout (`expo-router/drawer`) |
+
+Source: `docs/pages/router/migrate/sdk-55-to-56.mdx` (migration table).
+
+> The codemod rewrites `@react-navigation/native|core` to `expo-router/react-navigation`, which compiles — but the theme and navigation symbols re-exported there (`ThemeProvider`, `DarkTheme`, `DefaultTheme`, `useTheme`, `useRoute`, `useNavigation`, `Link`, `useLinkTo`) each carry `@deprecated … Will be removed in a future SDK.` Prefer importing those from the `expo-router` root once the codemod has run.
 
 **Before (SDK 55):**
 ```tsx
@@ -58,33 +96,42 @@ Expo CLI automatically rewrites `@react-navigation/core` imports coming from `no
 EXPO_ROUTER_DISABLE_RN_NAVIGATION_CHECK=1
 ```
 
-### 1.2 Native Stack v5 (experimental)
+### 1.2 `ExperimentalStack` — the new native stack (alpha, SDK 56+)
 
-- Built in partnership with `react-native-screens`.
-- An updated experimental native stack version that introduces **Material-style headers** and **predictive back gesture** support.
+The API name is **`ExperimentalStack`**, exported from the `expo-router` root. There is no `NativeStack v5` symbol. Details and limitations in §7.
+
+```tsx
+import { ExperimentalStack as Stack } from 'expo-router';
+```
 
 ### 1.3 Android toolbar (experimental)
 
-- Experimental toolbar support that mirrors the existing iOS functionality, exposed via `Stack.Toolbar`.
+- Experimental toolbar support that mirrors the existing iOS functionality, exposed via `Stack.Toolbar`. See §7.
 
 ### 1.4 Streaming SSR for web
 
 - The `unstable_useServerRendering` flag (set in the `expo-router` config plugin) enables **streaming server-side rendering** for web.
-- A new `generateMetadata` function fetches and configures metadata on initial page loads. It complements the existing `<Head>` component, which handles metadata updates **after hydration**.
+- A new `generateMetadata` function fetches and configures metadata on initial page loads. It complements the existing `<Head>` component, which handles metadata updates **after hydration**. See §12.
 
 ### 1.5 Data-loader helpers
 
-Two helpers narrow the loader callback signature:
+Two helpers narrow the loader callback signature (both from `expo-router/server`, which re-exports `expo-server` — see §12):
 
 - `createStaticLoader` — receives **only route parameters**.
 - `createServerLoader` — **always passes a request** and **throws** if misused during static generation.
 
+> Data loaders themselves are **alpha and available in SDK 55 and later** (`docs/pages/router/web/data-loaders.mdx` frontmatter `isAlpha: true`, line 13); SDK 56 adds these two helpers, not the feature.
+
 ### 1.6 Customizable Suspense fallbacks
 
-Export a `SuspenseFallback` function from a `_layout` route to customize the loading UI across the app:
+Export a `SuspenseFallback` function from a `_layout` route to customize the loading UI across the app. The component receives `{ route, params }`:
 
 ```tsx
-export function SuspenseFallback() {
+import type { SuspenseFallbackProps } from 'expo-router';
+
+export function SuspenseFallback({ route, params }: SuspenseFallbackProps) {
+  // route: the module's contextKey, e.g. './profile/[id].tsx'
+  // params: Record<string, string | string[]>
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
       <ActivityIndicator size="large" />
@@ -92,6 +139,8 @@ export function SuspenseFallback() {
   );
 }
 ```
+
+> Custom `SuspenseFallback` exports **do not work with async routes** (`docs/pages/router/web/async-routes.mdx`). Type source: `packages/expo-router/src/views/SuspenseFallback.tsx`.
 
 ---
 
@@ -109,11 +158,12 @@ Key features:
 - **Discoverable** — supports static web rendering and search-engine indexing.
 - **Fast development** — Universal Fast Refresh and artifact memoization across platforms.
 
-**SDK 56 project-creation note:** During the SDK 56 transition, `create-expo-app@latest` *without* `--template` creates **SDK 54** projects. For SDK 56 use:
+**Project-creation note:** `create-expo-app@latest` *without* `--template` still creates **SDK 54** projects (the docs word this as "the SDK 56 transition period" — `docs/pages/router/introduction.mdx:39`, identical text on the `sdk-56` and `sdk-57` branches). Pin the template explicitly:
 ```sh
-npx create-expo-app@latest --template default@sdk-56
+npx create-expo-app@latest --template default@sdk-56   # SDK 56
+npx create-expo-app@latest --template default@sdk-57   # SDK 57
 ```
-SDK 54 supports Expo Go on physical devices; **SDK 56 requires development builds** for device testing.
+SDK 54 is the last release with an Expo Go store build; **SDK 56 and SDK 57 require development builds** for device testing.
 
 ---
 
@@ -216,10 +266,12 @@ Source: https://docs.expo.dev/router/basics/navigation-layouts
 - **Root layout** `src/app/_layout.tsx` is the navigation entry point — *"this file is where you would put initialization code that may have previously gone inside an App.jsx file, such as loading fonts, interacting with the splash screen, or adding context providers."*
 - **`Stack`** implements the native stack; files in the directory automatically become routes. Optional `Stack.Screen` children configure options, matched by the `name` prop.
 - **Tabs** — two implementations:
-  - **JavaScript tabs**: the `Tabs` component with `Tabs.Screen` children (cross-platform).
-  - **Native tabs**: the `NativeTabs` component (Android/iOS) with `NativeTabs.Trigger` children for platform-native behavior.
+  - **JavaScript tabs**: the `Tabs` component with `Tabs.Screen` children (cross-platform). `import { Tabs } from 'expo-router/js-tabs';` — the root `expo-router` export still works but is `@deprecated` in SDK 56.
+  - **Native tabs**: the `NativeTabs` component (Android/iOS) with `NativeTabs.Trigger` children for platform-native behavior. `import { NativeTabs } from 'expo-router/unstable-native-tabs';` — see §8.
   - Platform extensions (`.native.tsx` vs `.tsx`) select per-platform implementations.
+- **`Drawer`** — `import { Drawer } from 'expo-router/drawer';` (not a root export).
 - **`Slot`** — *"a placeholder for the current child route"* — used for layouts without a navigator (e.g. wrapping routes with a header/footer while replacing rather than stacking pages).
+- **`Stack.Protected`** — route guard: `<Stack.Protected guard={isSignedIn}>…</Stack.Protected>` hides the wrapped screens from the navigator and the linking config while `guard` is false (`packages/expo-router/src/views/Protected.tsx`).
 
 Guidance: avoid unnecessary nested navigators; reuse the same parent navigator unless nesting is genuinely required.
 
@@ -231,6 +283,17 @@ export default function Layout() {
   return <Stack />;
 }
 ```
+
+### 5.1 Custom navigators (alpha — SDK 56, `expo-router@56.2.10`+)
+
+Source: `docs/pages/router/advanced/custom-navigators.mdx` line 11 — *"in alpha and available in SDK 56 and later."*
+
+Root exports from `'expo-router'`:
+- `unstable_createStandardRouterNavigator(NavigatorContent, router)` — app developers building a navigator for one app.
+- `unstable_integrateWithRouter` — library authors shipping a reusable navigator for both Expo Router and React Navigation.
+- Routers `StackRouter` / `TabRouter`, and types `IntegrateWithRouterOptions`, `NavigatorContentProps`, `StandardNavigatorEventMapBase`, `StandardUseNavigationBuilderOptions`, `StackNavigationState`, `StackRouterOptions`, `TabNavigationState`, `TabRouterOptions`.
+
+**Version caveat:** these exports are **absent** from `expo-router@56.2.8` and `56.2.9` (the version the *frozen docs schema* pins) and first appear in **`56.2.10`** (published 2026-06-10), alongside the new `standard-navigation ^0.0.5` dependency. The `sdk-56` release branch now pins `~56.2.16`, so a normal `npx expo install` on SDK 56 gets them. Verified by grepping `build/exports.js` in the published tarballs for 56.2.8 / 56.2.9 (0 hits) vs 56.2.10 / 56.2.12 / 56.2.14 / 56.2.16 (present). If a lockfile pins exactly `56.2.9`, bump it — this is an SDK 56 feature, **not** a reason to upgrade to SDK 57.
 
 ---
 
@@ -325,15 +388,44 @@ Screens can also set options from within their own component via `<Stack.Screen 
 - `router.dismissAll()` — return to the first screen.
 - `router.canDismiss()` — whether dismissal is possible.
 
+### Route guards
+```tsx
+<Stack.Protected guard={isSignedIn}>
+  <Stack.Screen name="(app)" />
+</Stack.Protected>
+```
+`ProtectedProps = { guard: boolean; children?: ReactNode }` (`packages/expo-router/src/views/Protected.tsx`). While `guard` is `false` the wrapped screens are removed from the navigator **and** from the linking config, so they are not deep-linkable.
+
 ### Stack Toolbar (SDK 56)
 `Stack.Toolbar` provides an iOS header toolbar with **Liquid Glass** support; SDK 56 adds **experimental Android toolbar** support mirroring iOS. See `/router/advanced/stack-toolbar`.
 
+**SDK 56 GA Android limits** (`docs/pages/router/advanced/stack-toolbar.mdx` @ SDK 56 cut): `Stack.Toolbar.Button` renders **only its icon** on Android — both `Stack.Toolbar.Badge` and `Stack.Toolbar.Label` children are dropped. Badges work only in **iOS** header placements (`left`/`right`), never in the bottom toolbar. *(The Android badge restriction was lifted in a patch, not in SDK 57 itself: `ToolbarItemBadge.android.js` first appears in `expo-router@56.2.12` and, on the 57 line, only in `57.0.2` — it is absent from 57.0.0 and 57.0.1. See the delta section.)*
+
 ### iOS 26+ Liquid Glass opt-out
 - Set `UIDesignRequiresCompatibility: true` in the app config, **or**
-- Import `Stack as JsStack from 'expo-router/js-stack'`.
+- Use the JS stack: `import { Stack as JsStack } from 'expo-router/js-stack';` (this entry point is the SDK 56 replacement for `@react-navigation/stack`).
 
-### Native Stack v5 (SDK 56, experimental)
-Built with `react-native-screens`; adds Material-style headers and predictive back gesture support.
+### `ExperimentalStack` (SDK 56+, alpha)
+Source: `docs/pages/versions/v56.0.0/sdk/router/experimental-stack.mdx` (`isAlpha: true`); export at `packages/expo-router/src/exports.ts`.
+
+```tsx
+import { ExperimentalStack as Stack } from 'expo-router';
+
+export default function Layout() {
+  return (
+    <Stack screenOptions={{ headerShown: true }}>
+      <Stack.Screen name="index" options={{ title: 'Home' }} />
+    </Stack>
+  );
+}
+```
+A sibling to `Stack` powered by `react-native-screens/experimental`. Opt-in **per navigator**. Also exposes `ExperimentalStack.Screen` / `ExperimentalStack.Protected`, and types `ExperimentalStackNavigationOptions | NavigationEventMap | NavigationProp | ScreenProps`.
+
+Hard constraints — a model must not assume parity with `Stack`:
+- **Only four screen options are honored**: `title`, `headerShown`, `headerTransparent`, `headerBackVisible`. Anything else (`headerLeft`, `headerRight`, `headerTitle`, `headerStyle`, `headerTintColor`, `animation`, status bar options) logs a dev warning and is **ignored**.
+- No `presentation: 'modal'` / `'transparentModal'`; no `formSheet` or detents; no custom header components.
+- **Android**: cannot coexist with the standard `Stack` in the same app — pick one. Predictive back also requires `android.predictiveBackGestureEnabled: true` in the app config.
+- **Web**: falls back to the standard `Stack`, so the same layout is cross-platform.
 
 ---
 
@@ -344,7 +436,7 @@ Source: https://docs.expo.dev/router/advanced/tabs/
 `<Tabs>` creates a tab navigator with a bottom tab bar by default; `<Tabs.Screen>` defines individual tabs (takes `name` + `options`).
 
 ```tsx
-import { Tabs } from 'expo-router';
+import { Tabs } from 'expo-router/js-tabs'; // root `expo-router` export is deprecated in SDK 56
 
 export default function Layout() {
   return <Tabs screenOptions={{ tabBarActiveTintColor: 'blue' }} />;
@@ -370,7 +462,42 @@ export default function Layout() {
 <Tabs.Screen name="[user]" options={{ href: '/evanbacon' }} />
 ```
 
-> Note: SDK 56 also offers **native tabs** via `NativeTabs` / `NativeTabs.Trigger` (Android/iOS) — see `/versions/latest/sdk/router/native-tabs`.
+### Native tabs (`NativeTabs`) — Android/iOS
+
+The default tab experience in the SDK 56/57 templates. **Not** a root export:
+
+```tsx
+import { NativeTabs } from 'expo-router/unstable-native-tabs';
+
+export default function TabLayout() {
+  return (
+    <NativeTabs>
+      <NativeTabs.Trigger name="index">
+        <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="house.fill" md="home" />
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="settings">
+        <NativeTabs.Trigger.Icon sf="gear" md="settings" />
+        <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+    </NativeTabs>
+  );
+}
+```
+
+Compound API (SDK 55+ form): `NativeTabs.Trigger`, `NativeTabs.Trigger.Label`, `.Icon`, `.Badge`, `.VectorIcon`, `NativeTabs.BottomAccessory`. The standalone `Icon` / `Label` / `Badge` / `VectorIcon` values the SDK 54 docs import from `expo-router/unstable-native-tabs` are no longer exported from that subpath — they live at the **`expo-router` root**, and the compound members are aliases of them (see the import cheat sheet).
+
+Added across the SDK 56 patch line (`packages/expo-router/CHANGELOG.md`):
+
+| Version | Addition |
+|---|---|
+| 56.0.3 | `unstable_nativeProps` on the `NativeTabs` host (escape hatch to `react-native-screens` props). |
+| 56.2.0 | `disabled` on `NativeTabs.Trigger` (**Android + iOS** — both declaration sites in `src/native-tabs/types.ts` carry `@platform android` *and* `@platform ios`; it only suppresses the native tap, so `router.push()` / `<Link />` still navigate); `tabBarRespectsIMEInsets` on `NativeTabs` (Android only). |
+| 56.2.1 | Android `selectedIcon`: `drawable` / `md` accept `{ default, selected }`, matching iOS `sf` / `xcasset`. |
+| 56.2.3 | `EXPO_ROUTER_DISABLE_NATIVE_TABS_MD=1` env var disables Material Symbols (`md`) icons on Android. |
+| 56.2.6 | Per-tab Android props on `NativeTabs.Trigger`: `rippleColor`, `indicatorColor`, `disableIndicator`, `labelVisibilityMode`. |
+
+Icon prop selection: `sf` (SF Symbol, iOS), `xcasset` (iOS asset), `md` (Material Symbol, Android), `drawable` (Android drawable), `src` (image source).
 
 ---
 
@@ -379,7 +506,8 @@ export default function Layout() {
 Source: https://docs.expo.dev/router/web/api-routes
 
 - File convention: `name+api.ts` in the `app` directory (e.g. `hello+api.ts` → `/hello`).
-- Export HTTP method functions: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`. *"Unsupported methods will automatically return `405: Method not allowed`."*
+- Export HTTP method functions: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`. *"Making requests with an undefined method will automatically return `405: Method not allowed`. If an error is thrown during the request, it will automatically return `500: Internal server error`."*
+- **API route filenames cannot use platform extensions** — `hello+api.web.ts` will not work.
 
 ```ts
 export function GET(request: Request) {
@@ -401,18 +529,35 @@ const post = url.searchParams.get('post');
 ```
 
 ### Dynamic API routes
-Use `[param]+api.ts`; params are available in the handler.
+Use `[param]+api.ts`; params arrive as the **second handler argument**:
+```ts
+export async function GET(request: Request, { post }: Record<string, string>) { /* ... */ }
+```
 
 ### Error handling — `StatusError` from `expo-server`
 ```ts
 import { StatusError } from 'expo-server';
 
-export async function GET(request: Request) {
+export async function GET(request: Request, { post }: Record<string, string>) {
   if (!post) {
     throw new StatusError(404, 'No post found');
   }
 }
 ```
+`StatusError` always produces a JSON body with an `error` key. To bypass that wrapper (e.g. redirects), **throw a `Response` directly** — it replaces the resolved response as-is:
+```ts
+throw Response.redirect('https://expo.dev', 302);
+```
+
+### `expo-server` runtime helpers (SDK 54+)
+`npx expo install expo-server`. These are request-scoped — callable only in server code during an ongoing request, and usable outside API routes too (e.g. in `+middleware.ts`, loaders):
+- `origin(): string | null` — the **current request's URL** (on some platforms, the origin of the request). Per its TSDoc it deliberately **does not** use the `Origin` header in development, "as it may contain an untrusted value" (`packages/expo-server/src/runtime/api.ts`).
+- `environment(): string | null` — the request's environment name, or `null` for production. On EAS Hosting this is the alias or deployment identifier; other providers may report something else.
+- `requestHeaders()` — an `ImmutableHeaders` copy of the incoming request headers.
+- `setResponseHeaders({ ... })` or `setResponseHeaders(headers => { ... })` — mutate the outgoing response headers.
+
+### Server middleware (`+middleware.ts`) — alpha, SDK 54+
+Runs for **every** server request, before routes. Enable with the `unstable_useServerMiddleware` config-plugin flag; requires `web.output: 'server'`. Client-side navigation (native, or `<Link />` on web) does **not** pass through middleware. Type: `MiddlewareFunction` from `expo-router/server`. See `docs/pages/router/web/middleware.mdx`.
 
 ### Deployment
 ```sh
@@ -433,10 +578,39 @@ Source: https://docs.expo.dev/router/web/static-rendering/
 For request-time dynamic rendering, use **server rendering** with `web.output: 'server'` instead (see §12).
 
 ### `generateStaticParams`
-A **server-only function evaluated at build-time** in Node.js by Expo CLI. Has env vars + filesystem access, but no browser APIs or native Expo modules. *"Cascades from nested parents down to children. The cascading parameters are passed to every dynamic child route."*
+A **server-only function evaluated at build-time** in Node.js by Expo CLI. Has env vars + filesystem access, but no browser APIs or native Expo modules. *"`generateStaticParams` cascades from nested parents down to children. The cascading parameters are passed to every dynamic child route **that exports `generateStaticParams`**."*
 
 ### `+html.tsx`
-Root HTML wrapper for all routes. *"This file exports a React component that only ever runs in Node.js, which means global CSS cannot be imported inside of it."*
+Root HTML wrapper for all routes. *"This file exports a React component that only ever runs in Node.js, which means global CSS cannot be imported inside of it."* It is never rehydrated on the client and must render its `children` prop.
+
+Under **server rendering** a hand-written `+html.tsx` must consume `useServerDocumentContext()` and use **all four** returned values, or metadata, fonts and CSS silently drop out of the SSR HTML:
+
+```tsx
+import { ScrollViewStyleReset, useServerDocumentContext } from 'expo-router/html';
+
+export default function Root({ children }: { children: React.ReactNode }) {
+  const { htmlAttributes, bodyAttributes, headNodes, bodyNodes } = useServerDocumentContext();
+  return (
+    <html lang="en" {...htmlAttributes}>
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        <ScrollViewStyleReset />
+        {headNodes}
+      </head>
+      <body {...bodyAttributes}>
+        {children}
+        {bodyNodes}
+      </body>
+    </html>
+  );
+}
+```
+- `htmlAttributes` / `bodyAttributes` — attributes to spread onto `<html>` / `<body>`.
+- `headNodes` — metadata, CSS and other head assets (this is where `generateMetadata` output lands).
+- `bodyNodes` — fonts and other deferred assets.
+
+Source: `docs/pages/router/web/server-rendering.mdx` ("Root HTML").
 
 ### `<Head>` component
 ```tsx
@@ -478,9 +652,25 @@ Query params can be typed manually or as a second generic argument.
 
 ---
 
-## 12. Data Loaders & Server Rendering (SDK 56)
+## 12. Data Loaders & Server Rendering (SDK 55+, alpha)
 
 Sources: https://docs.expo.dev/router/web/data-loaders · https://docs.expo.dev/router/web/server-rendering
+
+> **Status:** data loaders are an **alpha** API available in **SDK 55 and later** — not new in SDK 56 (`docs/pages/router/web/data-loaders.mdx` frontmatter `isAlpha: true`, line 13). SDK 56 adds the `createStaticLoader` / `createServerLoader` helpers. The `expo-server` runtime API and `+middleware.ts` are SDK 54+, also alpha. Loaders require `web.output: 'static'` **or** `'server'`.
+
+All loader/metadata symbols come from `expo-router/server`. That subpath is the package-root shim `packages/expo-router/server.js` (`export { createStaticLoader, createServerLoader } from 'expo-server';`) plus `server.d.ts`, which re-exports the `expo-server` types and adds a local `RequestHandler`. There is **no** `src/server/index.ts` — the only file under `src/server/` is `ServerDocument.tsx`.
+```ts
+import {
+  createStaticLoader,
+  createServerLoader,
+  type LoaderFunction,
+  type GenerateMetadataFunction,
+  type ImmutableRequest,
+  type Metadata,
+  type MiddlewareFunction,
+} from 'expo-router/server';
+```
+`useLoaderData` is the exception — it comes from `expo-router`.
 
 ### `loader` + `useLoaderData`
 Export a `loader` function from a route file and read it with `useLoaderData`:
@@ -500,6 +690,8 @@ export default function Home() {
 
 ### `createStaticLoader` — params only
 ```tsx
+import { createStaticLoader } from 'expo-router/server';
+
 export const loader = createStaticLoader(async params => {
   const response = await fetch(`https://api.example.com/posts/${params.postId}`);
   return response.json();
@@ -508,6 +700,8 @@ export const loader = createStaticLoader(async params => {
 
 ### `createServerLoader` — request + params (throws if misused during static generation)
 ```tsx
+import { createServerLoader } from 'expo-router/server';
+
 export const loader = createServerLoader(async (request, params) => {
   const authToken = request.headers.get('Authorization');
   // ... handle authentication
@@ -524,21 +718,29 @@ export const loader = createServerLoader(async (request, params) => {
 - Loader code is **dropped from the client bundle**.
 - Env vars in loaders never expose secrets to clients.
 
-### Server rendering / streaming SSR config
+### Config — both flags are required
 ```json
 {
   "expo": {
     "web": { "output": "server" },
     "plugins": [
-      ["expo-router", { "unstable_useServerRendering": true }]
+      ["expo-router", {
+        "unstable_useServerDataLoaders": true,
+        "unstable_useServerRendering": true
+      }]
     ]
   }
 }
 ```
-The `unstable_useServerRendering` flag activates streaming server rendering; HTML is generated dynamically on each request rather than pre-generated.
+- `unstable_useServerDataLoaders` — **required for loaders to run at all**. Works with `web.output: 'static'` or `'server'`. Omitting it is the most common reason a `loader` export is silently ignored.
+- `unstable_useServerRendering` — activates streaming server rendering; HTML is generated per request rather than pre-generated. Only needed for `web.output: 'server'`.
+
+Source: `docs/pages/router/web/data-loaders.mdx` Steps 1–2; `packages/expo-router/plugin/src/withRouter.ts`.
 
 ### `generateMetadata` (server-side, before render)
 ```tsx
+import type { GenerateMetadataFunction } from 'expo-router/server';
+
 export const generateMetadata: GenerateMetadataFunction = async (request, params) => {
   const response = await fetch(`https://api.example.com/posts/${params.id}`);
   const post = await response.json();
@@ -557,16 +759,24 @@ export const generateMetadata: GenerateMetadataFunction = async (request, params
 Receives the incoming request and route params. *"generateMetadata is the recommended approach for server rendering because it resolves metadata before the HTML stream begins,"* whereas the `<Head>` component from `expo-router/head` updates metadata **after client hydration**.
 
 ### `SuspenseFallback` (SDK 56)
-Export from a `_layout` route to customize the app-wide Suspense loading UI (see §1.6):
-```tsx
-export function SuspenseFallback() {
-  return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <ActivityIndicator size="large" />
-    </View>
-  );
-}
-```
+Export from a `_layout` route to customize the app-wide Suspense loading UI — signature, props and the async-routes caveat are in §1.6.
+
+---
+
+## Not covered in depth here
+
+Exists in SDK 56, deliberately out of scope for this file — do not assume it is missing from the framework:
+
+| Feature | Import / file | Doc |
+|---|---|---|
+| `Link.Preview` / `Link.Trigger` / `Link.Menu`, `useIsPreview` | `expo-router` | `/router/reference/link-preview` |
+| Apple zoom transitions (`usePreventZoomTransitionDismissal`, `LinkAppleZoomProps`) | `expo-router` | `/router/advanced/stack` |
+| `unstable_navigationEvents` (`pagePreloaded` / `pageFocused` / `pageBlurred` / `pageRemoved`, each with `segments` since 56.2.3) | `expo-router` | — |
+| `useCurrentRouteInfo` (56.1.2), `useRoute` (56.1.1) | `expo-router` | — |
+| Config-plugin `redirects` / `rewrites` / `headers` / `platformRoutes` / `asyncRoutes` | `app.json` plugins | `/router/reference/redirects` |
+| Testing library (`renderRouter`, `screen`) | `expo-router/testing-library` | `/router/reference/testing` |
+| `SplitView` | `expo-router/unstable-split-view` (there is **no** `expo-router/split-view` subpath — the package only ships `unstable-split-view.{js,d.ts}`) | `/versions/latest/sdk/router/split-view` |
+| RSC (experimental) | `expo-router/rsc` | — |
 
 ---
 
@@ -585,3 +795,71 @@ export function SuspenseFallback() {
 - Server rendering: https://docs.expo.dev/router/web/server-rendering
 - Data loaders: https://docs.expo.dev/router/web/data-loaders
 - Typed routes: https://docs.expo.dev/router/reference/typed-routes/
+
+---
+
+## SDK 57 delta (and 56.2.x backports)
+
+Expo Router changed **substantially** after the SDK 56 GA cut: a new custom-navigator API, native tabs rewritten on a new navigation core, an `unstable_nativeProps` escape hatch on the native stack, Android toolbar badges, and one Android behavior change. Everything in the sections above still applies unless contradicted here.
+
+**Headline finding: for `expo-router`, the 56 → 57 delta is essentially just the version number.** Every JS/TS API change below is present in `expo-router@56.2.16` as well as in `57.0.x`. Nothing in this section is a reason to upgrade an SDK 56 app to SDK 57. Upgrade for the platform-level 57 changes documented elsewhere (React Native 0.86, Reanimated 4.5, etc.), not for Router.
+
+> **Read this before treating anything below as "57-only".** Almost every item was **backported into the `expo-router` 56.2.x patch line** and is present in `expo-router@56.2.16` — the current `sdk-56` dist-tag, and exactly what `origin/sdk-56:packages/expo/bundledNativeModules.json` pins. Each bullet is annotated with the first 56.2.x patch that carries it. Verified by unpacking the published tarballs (`npm pack expo-router@<version>`), not from the monorepo. **The practical advice for nearly everything below is "bump your SDK 56 patch", not "upgrade to SDK 57".**
+
+Evidence base: `git show origin/sdk-56:packages/expo-router/CHANGELOG.md` vs `origin/sdk-57:` (`## 57.0.0 — 2026-06-25`), cross-checked against published npm tarballs for 56.2.8–56.2.16 and 57.0.0–57.0.8.
+
+> **Do not** treat monorepo commit `15e7ddcc2d3` ("the SDK 57 cut") as what shipped as `expo-router@57.0.0`. It is ahead of the release branch, and several things present there were never in any published 57.0.x — most notably the `package.json#exports` map (added on main by #46801, 2026-06-17) and the `StandardUseNavigationBuilderOptions` form of `NativeTabsProps.screenListeners`. Also **do not** use `docs/pages/versions/v57.0.0/sdk/router/*` — it differs from v56 only by `sourceCodeUrl`, and `docs/public/static/data/v57.0.0/expo-router.json` is staler than the v56 one.
+
+### Breaking (relative to the SDK 56 GA cut — all three also shipped in 56.2.x)
+
+- **Native tabs rewritten on `standard-navigation`** (#46456, "Add `standard-navigation` integration"; new dep `standard-navigation ^0.0.5`). **Also in 56.2.10+** — the dep and the rewrite are in `56.2.10` through `56.2.16`, so this is not a 56→57 delta for anyone on a current SDK 56 patch.
+  - `NativeTabTriggerProps.listeners` is now `ScreenProps<any, TabNavigationState<ParamListBase>, NativeTabNavigationEventMap>['listeners']` (was `ScreenListeners<NavigationState, EventMapBase> | ((prop: { route }) => …)`). Present in both `56.2.10+` and all `57.0.x`. Runtime behavior is compatible; **hand-annotated listener types will fail to compile**. Prefer inferring the parameter types.
+  - `NativeTabsProps.screenListeners` did **not** change. In `56.2.9`, `56.2.16`, `57.0.0` and `57.0.8` it is still `ScreenListeners<TabNavigationState<ParamListBase>, NativeTabNavigationEventMap> | ((prop: { route: RouteProp<ParamListBase, string> }) => ScreenListeners<…>)` (`build/native-tabs/types.d.ts`). The `StandardUseNavigationBuilderOptions` form exists only on the monorepo main branch and has not shipped.
+- **`tabPress` payload changed** (#46445) — **also in 56.2.10+**. `NativeTabNavigationEventMap.tabPress.data` is now `{ __internalTabsType: 'native'; isPrevented: boolean }`, and `OnTabChangeEventPayload` gained `isPrevented?: boolean` (default `false`). A `disabled` tab now **emits `tabPress` with `isPrevented: true` and performs no navigation** — at the SDK 56 GA cut it emitted nothing. Listeners that assumed "`tabPress` fired ⇒ navigation happened" must now check `isPrevented`.
+- **[android] Navigation-state restoration across activity recreation was removed** (#47422) — **also in 56.2.14+** (the `storeRef.current.state` restore branch is gone from `build/global-state/useStore.js` in 56.2.14 onward). The restore path in `src/global-state/useStore.ts` / `store.ts` / `fork/useLinking.native.ts` is gone. It is safe only because the companion change (#47423) adds `assetsPaths` to the `MainActivity` `android:configChanges`, so the activity is no longer recreated on dynamic-color changes. **That template change is on the `sdk-56` release branch too** — `templates/expo-template-bare-minimum/android/app/src/main/AndroidManifest.xml` has the identical `…|smallestScreenSize|assetsPaths` string on `origin/sdk-56` and `origin/sdk-57`, so it is *not* an SDK 57 delta. **Migration:** bare / manually-managed Android projects that do not regenerate `AndroidManifest.xml` will silently **lose navigation state** on config changes — this bites SDK 56 projects on 56.2.14+ exactly as it does SDK 57 ones. Re-run prebuild, or hand-edit `android:configChanges` to end with `|assetsPaths`.
+
+### Changes since the SDK 56 GA cut (57 + backported 56.2.x)
+
+Nothing in this list is 57-exclusive: every item below is already in `expo-router@56.2.16`. The first-carrying 56.2.x patch is noted on each bullet.
+
+- **`unstable_nativeProps` on native `Stack` screen options** (#47482) — **also in 56.2.14+** — escape hatch to `react-native-screens` props Expo Router does not expose. `packages/expo-router/src/react-navigation/native-stack/types.tsx`:
+  ```ts
+  type NativeStackScreenNativeProps = Partial<Omit<ScreenProps, 'children' | 'screenId' | 'activityState'>>;
+  type NativeStackHeaderNativeProps = Partial<ScreenStackHeaderConfigProps>;
+  type NativeStackNativeProps = NativeStackScreenNativeProps & { headerConfig?: NativeStackHeaderNativeProps };
+  // NativeStackNavigationOptions.unstable_nativeProps?: NativeStackNativeProps   // android + ios
+  ```
+  It **overrides** anything Expo Router sets and may change in minor versions. (`NativeTabs` already had an equivalent host-level `unstable_nativeProps` in 56.0.3.)
+- **[android] `Stack.Toolbar.Badge` now works** (#46537, #47276) — **in 56.2.12+ and 57.0.2+; NOT in 57.0.0 or 57.0.1** (`build/layouts/stack-utils/toolbar/ToolbarItemBadge.android.js` is absent there). This reverses the SDK 56 GA limitation in §7. Badges work in **header** placements (`left`/`right`) on both platforms, including on `Stack.Toolbar.Menu` icons. Still unsupported: `Stack.Toolbar.Label` children on Android (the button renders icon + badge only), and badges in the **bottom** toolbar on either platform. The docs also moved to `<Stack.Toolbar.Button icon={process.env.EXPO_OS === 'ios' ? 'bell' : bellIcon}>` instead of a nested `<Stack.Toolbar.Icon sf="bell" />`.
+- **`NativeTabs.Trigger` testing/a11y props** (#47472) — **also in 56.2.15+**: `testID` and `accessibilityLabel` on the trigger, plus `tabBarItemTestID` / `tabBarItemAccessibilityLabel` on `NativeTabOptions`. Platform nuance from the TSDoc — on iOS `testID` maps to the accessibility identifier (XCUITest and Maestro see it); on **Android** it maps to the view tag, which Detox reads but **Maestro and Appium do not** — match on `accessibilityLabel` there, which maps to `contentDescription` and needs API 26+.
+- **`expo-router/drawer` re-exports the drawer building blocks** (#46635) — **also in 56.2.10+** — so a custom `drawerContent` no longer needs `@react-navigation/drawer`. Values: `DrawerContent`, `DrawerContentScrollView`, `DrawerItem`, `DrawerItemList`, `DrawerToggleButton`, `DrawerView`, `getDrawerStatusFromState`, `useDrawerStatus`, `useDrawerProgress`. Types: `DrawerContentComponentProps`, `DrawerHeaderProps`, `DrawerNavigationEventMap`, `DrawerNavigationOptions`, `DrawerNavigationProp`, `DrawerNavigatorProps`, `DrawerOptionsArgs`, `DrawerScreenProps`. `createDrawerNavigator` is **intentionally omitted** (use the `Drawer` layout), as are `DrawerStatusContext` / `DrawerProgressContext` (use the hooks).
+- **`Theme` type** exported from the `expo-router` root (#47476) — **also in 56.2.15+** (`export type { Theme }` in `build/exports.d.ts`).
+- **Config-plugin `Props` type resynced with the runtime schema** (#46677) — **also in 56.2.10+** — TS-only fix for typed `app.config.ts`. Before the fix the type was missing `platformRoutes`, `redirects`, `rewrites`, `disableSynchronousScreensUpdates`, still declared the removed `partialTypedGroups`, typed `origin` as `string` (now `string | boolean`) and `asyncRoutes` as a loose `string` (now `'development' | 'production' | boolean`, per-platform object allowed). `partialTypedGroups` → **`partialRouteTypes`**.
+- **Custom navigators** — see §5.1; landed in `expo-router@56.2.10`, so it is an SDK 56 feature, not a 57 one.
+- Web/SSR and platform fixes worth knowing — **all present on both lines**: async routes rehydrate synchronously by carrying through preloaded modules, removing FOUC in production web output (#46539, `56.2.10+`); [ios] white flash behind screens during the interactive swipe-back gesture fixed (#47121, `56.2.13+`); `extractExactPathFromURL` guards deep-link decoding against malformed percent-encoding (#47526, `56.2.15+`); [android] bottom-toolbar press detection fixed (#47389 — shipped in `56.2.14` and `57.0.4`, so it is **absent from 57.0.0–57.0.3**). These are patch-level fixes; check the specific patch you are on rather than assuming "SDK 57 has it".
+- Testing library: `renderRouter` no longer ignores `overrides` / lists duplicate routes when an override key matches a file in `appDir` (#47287 — in `56.2.15` and `57.0.5`, so **not** in 57.0.0–57.0.4); a system time mocked with `jest.setSystemTime` is now preserved across `renderRouter` (#46978, `56.2.12+`).
+
+> **No `package.json#exports` regression exists.** Earlier drafts of this file warned about `expo-router/head`, `expo-router/stack` and `expo-router/server` mis-resolving in 57.0.0 because of a new `exports` map. That is false for every published release: `'exports' in package.json` is `false` for `expo-router@56.2.9`, `56.2.16`, `57.0.0` and `57.0.8`, and `head.js`, `stack.js` and `server.js` are all present at the package root in each. The `exports` map exists only on the monorepo main branch (#46801).
+
+### Unchanged in 57
+
+`Link` / `useRouter` / `router` / params hooks, typed routes, API routes (`docs/pages/router/web/api-routes.mdx` diffs cosmetically only across the 57 window), data loaders and `generateMetadata`, `+html.tsx` / `useServerDocumentContext`, `ExperimentalStack`'s option surface, `Stack.Protected`, the `@react-navigation/*` → `expo-router/*` import mapping (still enforced).
+
+### Version pins (56 → 57)
+
+| Package | SDK 56 | SDK 57 |
+|---|---|---|
+| `expo-router` | `~56.2.16` | `~57.0.8` |
+| `expo-server` | `~56.0.5` | `~57.0.1` |
+| `expo-linking` | `~56.0.16` | `~57.0.4` |
+| `expo-constants` | `~56.0.22` | `~57.0.7` |
+| `expo-status-bar` | `~56.0.4` | `~57.0.1` |
+| `react-native-screens` | `~4.26.0` | `~4.26.0` (unchanged) |
+| `react-native-safe-area-context` | `~5.7.0` | `~5.7.0` (unchanged) |
+| `react-native-web` | `~0.21.0` | `~0.21.0` (unchanged) |
+
+Source: `git show origin/sdk-56:packages/expo/bundledNativeModules.json` vs `origin/sdk-57:` — the file that ships inside the `expo` package and that `npx expo install` resolves against.
+
+Two traps:
+- **The first-party `expo-*` pins are not flat `~57.0.0`.** SDK 57 ships `expo-router ~57.0.8`, `expo-server ~57.0.1`, `expo-linking ~57.0.4`, `expo-constants ~57.0.7`. Writing `~57.0.0` into `package.json` by hand will under-pin; use `npx expo install`.
+- **`react-native-screens` is `~4.26.0` on *both* lines, not `4.25.2`.** The `4.25.2` value only appears in the frozen `docs/public/static/schemas/v56.0.0|v57.0.0/native-modules.json`, which is stale for both SDKs (it also still says `expo-router ~56.2.9`). Do not source pins from those schemas, and do not assert a screens bump for SDK 57 — the bump (#47770) landed on the `sdk-56` line as well.

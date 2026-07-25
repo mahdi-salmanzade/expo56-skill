@@ -2,7 +2,45 @@
 
 Domain reference for the Expo SDK 56 knowledge base. Covers `expo-video`, `expo-audio` (playback + recording), the deprecated/removed `expo-av`, and `expo-screen-capture`.
 
-> SDK 56 note: `expo-av` is no longer part of the SDK. Its v56 doc page (`/versions/v56.0.0/sdk/av/`) and the `latest` page both return HTTP 404 — see the [expo-av](#expo-av-deprecated--removed) section for the migration path. Treat `expo-video` and `expo-audio` as the supported APIs.
+## Read this first — what models get wrong from memory
+
+**Do not emit `expo-av`.** It is not in the SDK. `import { Audio, Video } from 'expo-av'` will not resolve. There is no `av.mdx` under `docs/pages/versions/v55.0.0/`, `v56.0.0/` or `v57.0.0/`, and `expo-av` is absent from `packages/expo/bundledNativeModules.json` on both `origin/sdk-56` and `origin/sdk-57`. Use `expo-video` and `expo-audio`.
+
+expo-av → expo-video / expo-audio symbol map:
+
+| expo-av (do not use) | Replacement |
+|------|-------------|
+| `Audio.Sound.createAsync(source)` | `useAudioPlayer(source)` / `createAudioPlayer(source)` |
+| `sound.playAsync()` / `pauseAsync()` | `player.play()` / `player.pause()` |
+| `sound.setPositionAsync(positionMillis)` | `player.seekTo(seconds)` — **unit change: ms → seconds** |
+| `status.positionMillis` / `status.durationMillis` | `status.currentTime` / `status.duration` — **seconds, not ms** |
+| `setOnPlaybackStatusUpdate(cb)` | `useAudioPlayerStatus(player)` / `useEvent(player, ...)` |
+| `Audio.Recording.createAsync()` | `useAudioRecorder(preset)` + `prepareToRecordAsync()` + `record()` |
+| `playsInSilentModeIOS` | `playsInSilentMode` |
+| `staysActiveInBackground` | `shouldPlayInBackground` |
+| `interruptionModeIOS` / `interruptionModeAndroid` (numeric enums) | `interruptionMode` (string union, both platforms) |
+| `<Video resizeMode={ResizeMode.CONTAIN} />` | `<VideoView contentFit="contain" />` |
+| `<Video useNativeControls />` | `<VideoView nativeControls />` |
+
+Other traps in this domain:
+
+- **Seconds by default.** Positions and durations (`currentTime`, `duration`, `seekTo`, `seekBy`, `bufferedPosition`) are **seconds**; expo-av used milliseconds. This is the most common silent migration bug. The milliseconds hold-outs are the ones whose names say so: `RecorderState.durationMillis`, `AudioPlayerOptions.updateInterval` / `AudioPlaylistOptions.updateInterval`, `useAudioRecorderState(recorder, intervalMs)`, and `seekTo(seconds, toleranceMillisBefore?, toleranceMillisAfter?)`.
+- **Lifecycle.** `useVideoPlayer` / `useAudioPlayer` / `useAudioPlaylist` auto-release on unmount. The `createVideoPlayer` / `createAudioPlayer` / `createAudioPlaylist` factories **do not** — you must call `release()` yourself (`AudioPlaylist` also exposes `destroy()`).
+- **iOS `audioMixingMode` docs/native mismatch (56 *and* 57).** The TSDoc says `@default 'auto'`, but the iOS native default is `.doNotMix` — video playback silently interrupts other audio. Set it explicitly on iOS. Verified `var audioMixingMode: AudioMixingMode = .doNotMix` in `ios/VideoPlayer.swift` of both `expo-video@56.1.4` and `expo-video@57.0.2` (published tarballs). The flip to `.auto` (#47363) is on `main` only — **not in 57**; do not upgrade expecting it.
+- Overlapping `VideoView`s with `contentFit="cover"` may render out of bounds; set `surfaceType="textureView"` on Android.
+- Multiple `VideoView`s sharing one player is unsupported on Android (platform limitation).
+- On Android the JS runtime is **paused** while a `VideoView` is in fullscreen, so `ref.exitFullscreen()` only works when called from a native listener.
+
+### Version pins
+
+| Package | SDK 56 | SDK 57 |
+|---------|--------|--------|
+| `expo-video` | `~56.1.4` | `~57.0.2` |
+| `expo-audio` | `~56.0.13` | `~57.0.3` |
+| `expo-screen-capture` | `~56.0.4` | `~57.0.1` |
+| `expo-av` | — (not in the SDK) | — (not in the SDK) |
+
+Source: `packages/expo/bundledNativeModules.json` on `origin/sdk-56` / `origin/sdk-57` — this is what `expo install` resolves against. (Do **not** use `docs/public/static/schemas/v5x.0.0/native-modules.json`; those snapshots are stale and under-report the shipped patch levels.) Note `expo-video` moved to a **56.1.x** minor inside SDK 56 (56.1.0 added Android `exitFullscreen`) — pin `~56.1.4`, not `~56.0.x`. The `expo-*` pins are **not** flat `~57.0.0` in SDK 57.
 
 ---
 
@@ -99,7 +137,7 @@ Props:
 
 `VideoView` imperative methods (via ref):
 - `enterFullscreen(): Promise<void>`
-- `exitFullscreen(): Promise<void>`
+- `exitFullscreen(): Promise<void>` — **Android caveat:** the JS runtime is paused while the `VideoView` is in fullscreen, so this only works when called from a native listener. Use `useEventListener(player, 'playToEnd', () => ref.current?.exitFullscreen())`, not a `setTimeout` or a plain JS timer. Android support requires `expo-video >= 56.1.0` (before that it threw `MethodUnsupportedException`) — one more reason the SDK 56 pin is `~56.1.4`.
 - `startPictureInPicture(): Promise<void>`
 - `stopPictureInPicture(): Promise<void>`
 
@@ -110,7 +148,7 @@ Properties:
 | Property | Type | Default | Notes |
 |----------|------|---------|-------|
 | `allowsExternalPlayback` | boolean | `true` | AirPlay (iOS) |
-| `audioMixingMode` | `'mixWithOthers' \| 'duckOthers' \| 'auto' \| 'doNotMix'` | `'auto'` | Audio interaction |
+| `audioMixingMode` | `'mixWithOthers' \| 'duckOthers' \| 'auto' \| 'doNotMix'` | `'auto'` (TSDoc/Android) | **iOS in 56 *and* 57:** the native default is actually `doNotMix`, not `auto` — set it explicitly on iOS. The `.auto` fix (#47363) is not in either release line. |
 | `audioTrack` | `AudioTrack \| null` | `null` | Current audio track |
 | `availableAudioTracks` | `AudioTrack[]` | — | |
 | `availableSubtitleTracks` | `SubtitleTrack[]` | — | |
@@ -148,10 +186,11 @@ Methods:
 - `replace(source: VideoSource, disableWarning?: boolean): void`
 - `replaceAsync(source: VideoSource): Promise<void>`
 - `generateThumbnailsAsync(times: number | number[], options?: VideoThumbnailOptions): Promise<VideoThumbnail[]>`
+- `release(): void` — inherited from `SharedObject`. Required for players made with `createVideoPlayer`; `useVideoPlayer` releases automatically on unmount.
 
 ### Module static methods
 
-- `createVideoPlayer(source, playerBuilderOptions?): VideoPlayer`
+- `createVideoPlayer(source, playerBuilderOptions?): VideoPlayer` — **you own the lifecycle; call `player.release()` when done.**
 - `isPictureInPictureSupported(): boolean`
 - `getCurrentVideoCacheSize(): number`
 - `setVideoCacheSizeAsync(sizeBytes: number): Promise<void>`
@@ -159,7 +198,25 @@ Methods:
 
 ### Events (VideoPlayer)
 
-`playingChange`, `playbackRateChange`, `mutedChange`, `volumeChange`, `statusChange`, `sourceChange`, `sourceLoad`, `playToEnd`, `audioTrackChange`, `subtitleTrackChange`, `videoTrackChange`, `availableAudioTracksChange`, `availableSubtitleTracksChange`, `timeUpdate`, `isExternalPlaybackActiveChange` (iOS).
+All 15 events and their payload shapes (source: `packages/expo-video/src/VideoPlayerEvents.types.ts`). Every `old*` field is optional.
+
+| Event | Payload |
+|-------|---------|
+| `statusChange` | `{ status: VideoPlayerStatus; oldStatus?; error?: PlayerError }` |
+| `playingChange` | `{ isPlaying: boolean; oldIsPlaying? }` |
+| `playbackRateChange` | `{ playbackRate: number; oldPlaybackRate? }` |
+| `volumeChange` | `{ volume: number; oldVolume? }` |
+| `mutedChange` | `{ muted: boolean; oldMuted? }` |
+| `playToEnd` | *(no payload)* |
+| `timeUpdate` | `{ currentTime; currentLiveTimestamp: number \| null; currentOffsetFromLive: number \| null; bufferedPosition }` |
+| `sourceChange` | `{ source: VideoSource; oldSource? }` |
+| `sourceLoad` | `{ videoSource: VideoSource \| null; duration; availableVideoTracks; availableSubtitleTracks; availableAudioTracks }` |
+| `audioTrackChange` | `{ audioTrack: AudioTrack \| null; oldAudioTrack? }` |
+| `subtitleTrackChange` | `{ subtitleTrack: SubtitleTrack \| null; oldSubtitleTrack? }` |
+| `videoTrackChange` | `{ videoTrack: VideoTrack \| null; oldVideoTrack? }` |
+| `availableAudioTracksChange` | `{ availableAudioTracks: AudioTrack[]; oldAvailableAudioTracks? }` |
+| `availableSubtitleTracksChange` | `{ availableSubtitleTracks: SubtitleTrack[]; oldAvailableSubtitleTracks? }` |
+| `isExternalPlaybackActiveChange` (iOS) | `{ isExternalPlaybackActive: boolean; oldIsExternalPlaybackActive? }` |
 
 Listening patterns:
 
@@ -209,11 +266,11 @@ interface DRMOptions {
 interface VideoMetadata { title?: string; artist?: string; artwork?: string; }
 
 interface BufferOptions {
-  minBufferForPlayback?: number;            // seconds, Android default 2
-  preferredForwardBufferDuration?: number;  // Android 20, iOS 0
-  maxBufferBytes?: number;                  // Android
-  waitsToMinimizeStalling?: boolean;        // iOS default true
-  prioritizeTimeOverSizeThreshold?: boolean; // Android
+  minBufferForPlayback?: number;             // seconds, Android default 2
+  preferredForwardBufferDuration?: number;   // Android 20, iOS 0
+  maxBufferBytes?: number | null;            // Android, default 0 = player picks the buffer size automatically
+  waitsToMinimizeStalling?: boolean;         // iOS default true
+  prioritizeTimeOverSizeThreshold?: boolean; // Android, default false
 }
 
 interface AudioTrack { label: string; language: string; name?: string; id?: string; isDefault?: boolean; autoSelect?: boolean; }
@@ -233,28 +290,42 @@ interface VideoTrack {
 }
 interface VideoSize { width: number; height: number; }
 
-interface SeekTolerance { toleranceBefore?: number; toleranceAfter?: number; } // seconds
+interface SeekTolerance { toleranceBefore?: number; toleranceAfter?: number; } // seconds, both default 0
 
 interface ScrubbingModeOptions {
-  scrubbingModeEnabled?: boolean;       // Android, iOS
-  increaseCodecOperatingRate?: boolean; // Android
-  allowSkippingMediaCodecFlush?: boolean; // Android
-  useDecodeOnlyFlag?: boolean;          // Android
-  enableDynamicScheduling?: boolean;    // Android
+  scrubbingModeEnabled?: boolean;         // Android, iOS — default FALSE; gates all the others
+  increaseCodecOperatingRate?: boolean;   // Android, default true
+  allowSkippingMediaCodecFlush?: boolean; // Android, default true
+  useDecodeOnlyFlag?: boolean;            // Android, default true
+  enableDynamicScheduling?: boolean;      // Android, default true
+}
+// On Android, playback is suppressed while scrubbingModeEnabled is true — set it back to false when the gesture ends.
+
+interface ButtonOptions {           // Android
+  showPlayPause?: boolean;          // default true
+  showSeekBackward?: boolean;       // default true
+  showSeekForward?: boolean;        // default true
+  showSettings?: boolean;           // default true
+  showSubtitles?: boolean | null;   // default undefined
+  showNext?: boolean;               // default false
+  showPrevious?: boolean;           // default false
+  showBottomBar?: boolean;          // default true; always visible in fullscreen regardless
 }
 
-interface ButtonOptions {
-  showPlayPause?: boolean;
-  showSeekBackward?: boolean;
-  showSeekForward?: boolean;
-  showSettings?: boolean;
-  showSubtitles?: boolean | null;
-  showNext?: boolean;
-  showPrevious?: boolean;
-  showBottomBar?: boolean;
-}
+// FullscreenOptions has FOUR fields, not one. typedoc does not expand it in the
+// generated docs data, so it is commonly mis-remembered as `{ enable }` alone.
+type FullscreenOptions = {
+  enable: boolean;                                          // default true; false hides the fullscreen button
+  orientation?: FullscreenOrientation;                      // default 'default'; Android, iOS
+  autoExitOnRotate?: boolean;                               // default false; Android, iOS; no-op when orientation === 'default'
+  keepFullscreenOnPiPStop?: KeepFullscreenOnPiPStopBehavior; // default 'autoEnter'; iOS
+};
 
-interface FullscreenOptions { enable: boolean; }
+type FullscreenOrientation =
+  | 'default' | 'portrait' | 'portraitUp' | 'portraitDown'
+  | 'landscape' | 'landscapeLeft' | 'landscapeRight';
+
+type KeepFullscreenOnPiPStopBehavior = 'always' | 'autoEnter' | 'never';
 
 type VideoPlayerStatus = 'idle' | 'loading' | 'readyToPlay' | 'error';
 type VideoContentFit = 'contain' | 'cover' | 'fill';
@@ -301,6 +372,16 @@ Caching is unavailable for HLS sources (iOS) and unsupported for DRM-protected c
 - Overlapping `VideoView`s with `contentFit="cover"` may render out of bounds; set `surfaceType="textureView"` on Android.
 - Multiple `VideoView`s sharing one player is unsupported on Android (platform limitation).
 
+### Intercepting native asset loading (iOS, advanced)
+
+`expo-video` exposes a native iOS extension point for taking over how the underlying `AVURLAsset` is created — URL rewriting, a custom `AVAssetResourceLoaderDelegate`, a local proxy server, DASH→HLS translation. Requires a custom/local native module, so it is **not available in Expo Go**.
+
+- Conform a Swift class to `VideoAssetTransportProvider`: `identifier` (stable name), `priority` (higher wins), `makeLoadPlan(for: VideoAssetSourceDescriptor) -> VideoAssetLoadPlan?` (return `nil` to ignore a source).
+- Register it in your module's `OnCreate` block via `VideoAssetTransportRegistry.registerProvider(...)`; unregister in `OnDestroy`.
+- `VideoAssetLoadPlan` fields: `assetURL`, `assetOptions`, `reportedContentTypeHint`, `resourceLoaderDelegate`, `resourceLoaderQueue`, `prepareAsset`, `retainedObjects`, `attachErrorHandler`, `onAssetDeinit`.
+
+Full walkthrough + Swift examples: `docs/pages/versions/v56.0.0/sdk/video.mdx` § "Intercepting native asset loading" (unchanged in v57).
+
 ### Full example: basic playback with controls
 
 ```jsx
@@ -343,7 +424,7 @@ Source: https://docs.expo.dev/versions/v56.0.0/sdk/audio/
 
 Modern, hook-based audio playback and recording library replacing the Audio API of `expo-av`. Supported platforms: Android, iOS, tvOS, Web, Expo Go.
 
-> `useAudioStream` (real-time PCM microphone capture) is documented in the streaming/recording domain and only summarized here.
+> `useAudioStream` (real-time PCM microphone capture) is only summarized here — the full `AudioStream` class and its `AudioStreamOptions` / `AudioStreamResult` / `AudioStreamBuffer` / `AudioStreamEncoding` types live in `references/07-media-device-apis.md`.
 
 ### Installation
 
@@ -370,7 +451,11 @@ npx expo install expo-audio
 }
 ```
 
-Configurable properties: `microphonePermission` (iOS), `recordAudioAndroid` (Android RECORD_AUDIO), `enableBackgroundRecording`, `enableBackgroundPlayback` (default `true`).
+Configurable properties (source: `packages/expo-audio/plugin/src/withAudio.ts`):
+- `microphonePermission?: string | false` (iOS) — `NSMicrophoneUsageDescription` text; pass `false` to omit the key entirely. Default `"Allow $(PRODUCT_NAME) to access your microphone"`.
+- `recordAudioAndroid?: boolean` (Android `RECORD_AUDIO`) — default `true`.
+- `enableBackgroundRecording?: boolean` — default `false`.
+- `enableBackgroundPlayback?: boolean` — default `true`.
 
 ### Hooks
 
@@ -406,9 +491,10 @@ Methods:
 - `replace(source)`
 - `remove()`
 - `setPlaybackRate(rate, pitchCorrectionQuality?)`
-- `setActiveForLockScreen(active, metadata?, options?)`
+- `setActiveForLockScreen(active: boolean, metadata?: AudioMetadata, options?: AudioLockScreenOptions)`
 - `updateLockScreenMetadata(metadata)`
 - `clearLockScreenControls()`
+- `release(): void` — inherited from `SharedObject`. Required for players made with `createAudioPlayer`; `useAudioPlayer` releases automatically on unmount.
 
 ### Class: `AudioRecorder`
 
@@ -417,11 +503,54 @@ Properties: `currentTime` (seconds), `isRecording`, `uri` (`string | null`), `id
 Methods:
 - `prepareToRecordAsync(options?)`
 - `record(options?)`
-- `recordForDuration(seconds)` — deprecated
-- `startRecordingAtTime(seconds)` — deprecated
+- `recordForDuration(seconds)` — **deprecated**, use `record({ forDuration: seconds })`
+- `startRecordingAtTime(seconds)` — **deprecated**, use `record({ atTime: seconds })` (iOS only)
 - `pause()`, `stop()`
 - `getStatus()` → `RecorderState`
 - `getAvailableInputs()`, `getCurrentInput()`, `setInput(inputUid)`
+
+### Class: `AudioPlaylist`
+
+Obtained from `useAudioPlaylist(options?)` (auto-released) or `createAudioPlaylist(options?)` (you release it).
+
+Properties: `id`, `currentIndex` (read-only), `trackCount` (read-only), `sources: AudioSourceInfo[]` (read-only), `playing`, `muted`, `isLoaded`, `isBuffering`, `currentTime` (seconds), `duration` (seconds), `volume` (0.0–1.0), `playbackRate`, `loop: AudioPlaylistLoopMode`.
+
+Methods:
+- `play()`, `pause()`
+- `next()`, `previous()` — wrap around only when `loop === 'all'`; no-ops at the ends when `loop === 'none'`
+- `skipTo(index)`
+- `seekTo(seconds): Promise<void>`
+- `add(source)`, `insert(source, index)`, `remove(index)`, `clear()`
+- `destroy()` — frees native resources; `release()` is also available via `SharedObject`
+
+```ts
+interface AudioPlaylistOptions {
+  sources?: AudioSource[];                        // default []
+  updateInterval?: number;                        // ms, default 500
+  loop?: AudioPlaylistLoopMode;                   // default 'none'
+  crossOrigin?: 'anonymous' | 'use-credentials';  // web only, default undefined
+}
+
+interface AudioPlaylistStatus {   // returned by useAudioPlaylistStatus(playlist)
+  id: string;
+  currentIndex: number;
+  trackCount: number;
+  currentTime: number;   // seconds
+  duration: number;      // seconds
+  playing: boolean;
+  isBuffering: boolean;
+  isLoaded: boolean;
+  playbackRate: number;
+  muted: boolean;
+  volume: number;
+  loop: AudioPlaylistLoopMode;
+  didJustFinish: boolean;
+}
+
+interface AudioSourceInfo { uri?: string; name?: string; }
+```
+
+> `AudioPlaylist` has **no** lock-screen methods — only `AudioPlayer` does. Still true in SDK 57: `setActiveForLockScreen` appears exactly once in the published `expo-audio@57.0.3` type surface (`build/AudioModule.types.d.ts`, on `AudioPlayer`), same as `56.0.13`. Playlist lock-screen controls (#46020) are `main`-only.
 
 ### Module static methods (`AudioModule` / `Audio.*`)
 
@@ -429,17 +558,19 @@ Methods:
 - `setIsAudioActiveAsync(active)` — enable/disable audio subsystem.
 - `requestRecordingPermissionsAsync()`, `getRecordingPermissionsAsync()`
 - `requestNotificationPermissionsAsync()` (Android)
-- `preload(source, options?)`, `getPreloadedSources()`, `clearPreloadedSource(source)`, `clearAllPreloadedSources()`
-- `createAudioPlayer(source?, options?)` — manual creation; requires `release()`.
-- `createAudioPlaylist(options?)` — manual creation.
+- `preload(source, options?: PreloadOptions)`, `getPreloadedSources()`, `clearPreloadedSource(source)`, `clearAllPreloadedSources()`
+  - `PreloadOptions { preferredForwardBufferDuration?: number }` — seconds, default `10`, Android + iOS. On iOS maps to `AVPlayerItem.preferredForwardBufferDuration` (`0` = let the system decide); no-op on web.
+- `createAudioPlayer(source?, options?)` — manual creation; **you must call `release()`**.
+- `createAudioPlaylist(options?: AudioPlaylistOptions)` — manual creation; **you must call `release()` / `destroy()`**.
 
 `setAudioModeAsync(mode)` accepts a partial `AudioMode`:
 - `playsInSilentMode` (boolean, default `true`)
 - `shouldPlayInBackground` (boolean, default `false`)
 - `allowsRecording` (boolean, iOS, default `false`)
 - `allowsBackgroundRecording` (boolean, default `false`)
-- `interruptionMode`: `'mixWithOthers' | 'doNotMix' | 'duckOthers'` (default `'mixWithOthers'`)
-- `shouldRouteThroughEarpiece` (boolean, iOS)
+- `interruptionMode`: `'mixWithOthers' | 'doNotMix' | 'duckOthers'` (default `'mixWithOthers'`). Must be `'doNotMix'` when using `setActiveForLockScreen`.
+- `interruptionModeAndroid` (`InterruptionModeAndroid`, Android) — **deprecated**; `InterruptionModeAndroid` is just an alias of `InterruptionMode`. Use `interruptionMode`, which now works on both platforms.
+- `shouldRouteThroughEarpiece` (boolean, **all platforms**, default `false`) — not iOS-only. On iOS it only takes effect when `allowsRecording: true` (i.e. the session category is `.playAndRecord`); otherwise audio routes through the speaker.
 
 ```jsx
 await setAudioModeAsync({
@@ -488,21 +619,25 @@ RecordingPresets.LOW_QUALITY = {
 ### Types
 
 ```ts
-interface AudioStatus {
-  currentTime: number;
-  duration: number;
+interface AudioStatus {          // 18 fields
+  id: string;
+  currentTime: number;           // seconds
+  duration: number;              // seconds
   playing: boolean;
   isLoaded: boolean;
   isBuffering: boolean;
   error: string | null;
   didJustFinish: boolean;
   loop: boolean;
-  mute: boolean;
+  mute: boolean;                 // note: `mute`, not `muted`
   playbackRate: number;
+  shouldCorrectPitch: boolean;   // default true
   timeControlStatus: string;
   playbackState: string;
+  reasonForWaitingToPlay: string;
   isLive: boolean;
   currentOffsetFromLive: number | null;
+  mediaServicesDidReset?: boolean; // iOS
 }
 
 interface RecorderState {
@@ -528,10 +663,13 @@ interface RecordingOptions {
   numberOfChannels: number;
   bitRate: number;
   isMeteringEnabled?: boolean;
+  directory?: RecordingDirectory;  // needs expo-audio >= 56.0.12; see patch-drift note
   android?: RecordingOptionsAndroid;
   ios?: RecordingOptionsIos;
   web?: RecordingOptionsWeb;
 }
+
+type RecordingDirectory = 'cache' | 'document';  // default 'cache'; Android + iOS
 
 interface RecordingStartOptions {
   forDuration?: number; // seconds
@@ -552,6 +690,12 @@ interface AudioMetadata {
   albumTitle?: string;
   artworkUrl?: string;
 }
+
+interface AudioLockScreenOptions {   // SDK 56: 3 fields
+  showSeekForward?: boolean;
+  showSeekBackward?: boolean;
+  isLiveStream?: boolean;            // hides duration + scrub bar, disables seek
+}
 ```
 
 ### Enums
@@ -560,7 +704,7 @@ interface AudioMetadata {
 - `IOSOutputFormat`: MPEG4AAC, LINEARPCM, APPLELOSSLESS, etc.
 - `AndroidAudioEncoder`: `'default'`, `'amr_nb'`, `'amr_wb'`, `'aac'`, `'he_aac'`, `'aac_eld'`
 - `AndroidOutputFormat`: `'default'`, `'3gp'`, `'mpeg4'`, `'amrnb'`, `'amrwb'`, `'aac_adts'`, `'mpeg2ts'`, `'webm'`
-- `RecordingSource` (Android): `'camcorder'`, `'default'`, `'mic'`, `'unprocessed'`, `'voice_communication'`, `'voice_performance'`, `'voice_recognition'`
+- `RecordingSource` (Android, 8 values): `'camcorder'`, `'default'`, `'mic'`, `'remote_submix'`, `'unprocessed'`, `'voice_communication'`, `'voice_performance'`, `'voice_recognition'`
 - `InterruptionMode`: `'mixWithOthers'`, `'doNotMix'`, `'duckOthers'`
 - `AudioPlaylistLoopMode`: `'none'`, `'single'`, `'all'`
 - `PitchCorrectionQuality` (iOS): `'low'`, `'medium'`, `'high'`
@@ -663,11 +807,25 @@ export default function App() {
 - Web requires a secure (HTTPS) context for microphone access.
 - Android requires explicit `setActiveForLockScreen()` for sustained background playback (≈3-minute OS limit otherwise).
 
-### SDK 56-specific audio changes
+### What arrived in SDK 56 (baseline — still present in 57)
 
 Per the SDK 56 changelog (https://expo.dev/changelog/sdk-56):
-- New `useAudioStream` hook for real-time microphone buffer access.
-- Live-stream improvements: iOS `isLiveStream` lock-screen option; Android `playsInSilentMode` support; `AudioStatus` now includes `isLive`, `currentOffsetFromLive`, and `error` fields.
+- `useAudioStream` hook for real-time microphone buffer access.
+- Live-stream support: iOS `isLiveStream` lock-screen option; Android `playsInSilentMode` support; `AudioStatus` gained `isLive`, `currentOffsetFromLive`, and `error`.
+
+### SDK 56 patch drift — things that arrived *inside* the 56 line
+
+The SDK 56 line is still being patched. These are **not** reasons to upgrade to 57; they only need a patch bump on the line you are already on. Minimum versions from the release-branch CHANGELOGs.
+
+| Item | Package | Needs |
+|------|---------|-------|
+| Android `VideoView` ref `exitFullscreen()` (was `MethodUnsupportedException`) — #41836 | `expo-video` | `>= 56.1.0` |
+| `availableVideoTracks` deduplicated for HLS sources with multiple audio renditions — #46691. Track-picker UIs built against an earlier 56 patch will render fewer rows. | `expo-video` | `>= 56.1.3` |
+| iOS failed players recovered instead of leaving a broken playback placeholder — #46681 | `expo-video` | `>= 56.1.3` |
+| iOS shared remote command center commands re-enabled so lock-screen controls keep working after `expo-audio` playback — #46753 | `expo-video` | `>= 56.1.4` |
+| Android `RemoteServiceException` crash when the system starts `AudioControlsService` via `startForegroundService()` — #46147 | `expo-audio` | `>= 56.0.10` |
+| `RecordingOptions.directory?: 'cache' \| 'document'` (default `'cache'`; Android + iOS). `'document'` keeps recordings out of reach of OS storage-pressure eviction — #46189 | `expo-audio` | `>= 56.0.12` |
+| Android recording crash in apps wrapped with Microsoft Intune — #47005 | `expo-audio` | `>= 56.0.13` |
 
 ---
 
@@ -679,15 +837,9 @@ Deprecation notice (verbatim, SDK 54 docs):
 
 > **Deprecated:** The `Video` and `Audio` APIs from `expo-av` have now been deprecated and replaced by improved versions in `expo-video` and `expo-audio`. We recommend using those libraries instead. `expo-av` is not receiving patches and will be removed in SDK 55.
 
-Timeline:
-- Deprecated in SDK 53.
-- SDK 54 was the last release shipping `expo-av` as part of the SDK; already removed from Expo Go.
-- Removed from the SDK starting SDK 55. By SDK 56 the doc pages are gone (404).
+Timeline: deprecated in SDK 53, last shipped in SDK 54, removed from the SDK in SDK 55; doc pages 404 from SDK 55 onward (v55, v56 and v57 all lack `sdk/av.mdx`).
 
-Migration path:
-- Video playback → migrate to **expo-video** (`useVideoPlayer` + `VideoView`).
-- Audio playback and recording → migrate to **expo-audio** (`useAudioPlayer`, `useAudioRecorder`).
-- Both replacement APIs are React hook-based and idiomatic for modern React. Recommended order: migrate video first, then audio.
+Migration path: video → **expo-video** (`useVideoPlayer` + `VideoView`); audio playback and recording → **expo-audio** (`useAudioPlayer`, `useAudioRecorder`). Symbol-by-symbol mapping is in the [table at the top of this file](#read-this-first--what-models-get-wrong-from-memory) — mind the milliseconds → seconds unit change. Recommended order: migrate video first, then audio.
 
 ---
 
@@ -729,15 +881,66 @@ npx expo install expo-screen-capture
 
 ### Platform notes
 
-- Android 14+ requires no permissions for blocking capture.
-- Android 13 and below require `READ_MEDIA_IMAGES`, configured via `android.permissions` in app config.
+- **Blocking capture** (`preventScreenCaptureAsync` / `usePreventScreenCapture`) never requires a permission on any Android version.
+- **The screenshot callback** (`addScreenshotListener` / `useScreenshotListener`) works permission-free on Android 14+. On Android 13 and lower it requires `READ_MEDIA_IMAGES`, declared via `android.permissions` in app config.
+- Google Play warning: `READ_MEDIA_IMAGES` may only be declared by apps that genuinely need broad photo access (Play Photo and Video Permissions policy) — do not add it just for screenshot detection if you ship to Play.
+- Testing: on Android Emulator run `adb shell input keyevent 120` to trigger a screenshot; on iOS Simulator use **Device → Trigger Screenshot**.
 
 ---
 
 ## Source URLs
 
-- expo-video: https://docs.expo.dev/versions/v56.0.0/sdk/video/
-- expo-audio: https://docs.expo.dev/versions/v56.0.0/sdk/audio/
-- expo-av (404 in SDK 56; deprecation notice from SDK 54 archive): https://docs.expo.dev/versions/v54.0.0/sdk/av/
-- expo-screen-capture: https://docs.expo.dev/versions/v56.0.0/sdk/screen-capture/
-- SDK 56 changelog (authoritative for version changes): https://expo.dev/changelog/sdk-56
+- expo-video: https://docs.expo.dev/versions/v56.0.0/sdk/video/ · https://docs.expo.dev/versions/v57.0.0/sdk/video/
+- expo-audio: https://docs.expo.dev/versions/v56.0.0/sdk/audio/ · https://docs.expo.dev/versions/v57.0.0/sdk/audio/
+- expo-av (404 in SDK 55/56/57; deprecation notice from SDK 54 archive): https://docs.expo.dev/versions/v54.0.0/sdk/av/
+- expo-screen-capture: https://docs.expo.dev/versions/v56.0.0/sdk/screen-capture/ · https://docs.expo.dev/versions/v57.0.0/sdk/screen-capture/
+- SDK 56 changelog (feature narrative): https://expo.dev/changelog/sdk-56
+- Authoritative for pins: `packages/expo/bundledNativeModules.json` on `origin/sdk-56` / `origin/sdk-57`. Authoritative for API surface: the published npm tarballs (`npm pack expo-video@57.0.2`).
+
+---
+
+## SDK 57 delta
+
+**There is no JS API delta in this domain.** Diffing the published tarballs, `expo-video@56.1.4/build` vs `expo-video@57.0.2/build` and `expo-audio@56.0.13/build` vs `expo-audio@57.0.3/build` are **byte-for-byte identical** (`diff -r -q` reports no differing files). Everything in the SDK 56 body above applies verbatim to SDK 57. Nothing in this domain is a reason to upgrade — and nothing in it will break when you do.
+
+> How this was verified: `npm pack expo-video@57.0.2 expo-video@56.1.4 expo-audio@57.0.3 expo-audio@56.0.13`, then recursive diff of the `package/` trees. Do not use `docs/public/static/data/v57.0.0/expo-*.json` or the `native-modules.json` schemas — both are stale snapshots. Do not use `packages/*/CHANGELOG.md` on `main`: `main` is SDK 58 in progress, and its `## Unpublished` section is the single biggest source of false "new in 57" claims for this domain.
+
+### What actually changed (native only)
+
+Outside `build/`, the only differing sources between the two tarball pairs:
+
+- **`expo-video` 56.1.4 → 57.0.2**, iOS only: `VideoPlayer.swift` and `VideoPlayerObserver.swift` changed, plus a new `ios/Utils/RunOnMainThread.swift`. Per the `origin/sdk-57` CHANGELOG these are 57.0.2's two bug fixes — a race when registering video player observer delegates (#47976) and `VideoPlayer` release adapted to the modified `SharedObject` lifecycle (#47828). `57.0.0` and `57.0.1` are both marked *"does not introduce any user-facing changes."*
+- **`expo-audio` 56.0.13 → 57.0.3**, iOS only: `AudioModule.swift` (audio session deactivated off the main thread to avoid app hangs, #47066, in 57.0.0) and `AudioPlaylist.swift` (iOS playlist `currentIndex` no longer freezes after the first auto-advance, #47257, in 57.0.1). 57.0.3's Intune recording fix (#47005) is also in `expo-audio@56.0.13`.
+- **`android/build.gradle`** for both packages differs only in the `version` / `versionName` strings. `androidxMedia3Version` is **`1.9.0` in both SDK 56 and SDK 57** — media3 did not move.
+- **`expo-screen-capture`**: 57.0.0 and 57.0.1 are both *"does not introduce any user-facing changes."* Only the pin moved.
+- **`expo-av`**: still not in the SDK. No `docs/pages/versions/v57.0.0/sdk/av.mdx`, and it is absent from `packages/expo/bundledNativeModules.json` on `origin/sdk-57`. Everything in the expo-av section above carries over verbatim.
+- The iOS `VideoAssetTransportProvider` extension point is unchanged — the only v56→v57 diff in `sdk/video.mdx` is the `sourceCodeUrl` frontmatter line.
+
+### Version pins (56 → 57)
+
+| Package | SDK 56 | SDK 57 |
+|---------|--------|--------|
+| `expo-video` | `~56.1.4` | `~57.0.2` |
+| `expo-audio` | `~56.0.13` | `~57.0.3` |
+| `expo-screen-capture` | `~56.0.4` | `~57.0.1` |
+
+Source: `packages/expo/bundledNativeModules.json` on `origin/sdk-56` and `origin/sdk-57`. Note these are **not** flat `~57.0.0`.
+
+### Not in 57 — do not attribute these to the upgrade
+
+All of the following are on `main` (SDK 58 in progress) only. Each was verified absent from `origin/sdk-57` and from the published 57.x tarballs.
+
+| Claim | Reality |
+|-------|---------|
+| iOS `audioMixingMode` default flipped `doNotMix` → `auto` (#47363) | **Not in 57.** `ios/VideoPlayer.swift` in the shipped `expo-video@57.0.2` still reads `= .doNotMix`. The docs/native mismatch persists in 57 — keep setting it explicitly on iOS. |
+| `AudioPlaylist` lock-screen controls `setActiveForLockScreen` / `updateLockScreenMetadata` / `clearLockScreenControls` (#46020) | **Not in 57.** `AudioPlayer` only, in both lines. |
+| `AudioLockScreenOptions` gains `showNextTrack` / `showPreviousTrack` (5 fields) | **Not in 57.** `build/AudioConstants.d.ts` is identical in 56.0.13 and 57.0.3: still the 3 fields `showSeekForward`, `showSeekBackward`, `isLiveStream`. |
+| Android `VideoView` prop `controllerAutoShow` (#46665) | **Not in 57.** The string does not appear anywhere in `expo-video@57.0.2`. |
+| Video caching keyed on `Authorization` / auth request headers (#45995) | **Not in 57.** |
+| AndroidX Media3 bumped to `1.9.1` (#45368) | **Not in 57.** Both lines pin `1.9.0`. |
+| expo-video iOS player-registry thread-safety fix (#46930); `VideoView` no longer strongly retaining a detached `VideoPlayer` (#46453) | **Not in 57.** |
+| expo-audio unique lock-screen `MediaSession` IDs (#47101); stale artwork on metadata update without `artworkUrl` (#45738); Android audio-focus-denied guard (#46957) | **Not in 57.** |
+| expo-video `maxResolution` player option (#46992); `useVideoPlayer` using `replaceAsync` instead of re-creating the player on source change (#46495) | **Not in 57.** |
+| expo-audio `RecordingOptions.fileName` (#47265); `RecorderState.fileSize` (#46808); `AudioStream.startFileRecordingAsync` / `stopFileRecordingAsync` (#46771) | **Not in 57.** |
+
+Also **not** 57 deltas because they shipped in the SDK 56 patch line too — see "SDK 56 patch drift" above for the minimum versions: `RecordingOptions.directory` (#46189, `expo-audio >= 56.0.12`), `availableVideoTracks` deduplication (#46691, `expo-video >= 56.1.3`), failed-player recovery (#46681, `expo-video >= 56.1.3`), remote command center re-enable (#46753, `expo-video >= 56.1.4`), Intune recording crash (#47005, `expo-audio >= 56.0.13`).

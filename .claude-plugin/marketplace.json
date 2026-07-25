@@ -5,14 +5,14 @@
     "url": "https://github.com/mahdi-salmanzade"
   },
   "metadata": {
-    "description": "Marketplace hosting the expo-56 Claude Code skill: an offline, point-in-time reference for Expo SDK 56."
+    "description": "Marketplace hosting the expo-56 Claude Code skill: an offline, version-pinned reference for Expo SDK 56 and SDK 57."
   },
   "plugins": [
     {
       "name": "expo-56",
       "source": "./expo-56",
-      "description": "Authoritative offline reference for Expo SDK 56 (React Native 0.85, React 19.2, Hermes v1) — for building new apps and migrating from SDK 55. Bundles 20 API reference docs. SDK 56 was in beta at snapshot time; treat as point-in-time.",
-      "version": "0.1.0"
+      "description": "Authoritative, version-pinned offline reference for Expo SDK 56 (RN 0.85) and SDK 57 (RN 0.86) — for building on either release and for the 55→56 and 56→57 migrations. Bundles 21 API reference docs; each carries an SDK 57 delta section. Audited against expo/expo source 2026-07-25; treat as point-in-time.",
+      "version": "0.2.0"
     }
   ]
 }

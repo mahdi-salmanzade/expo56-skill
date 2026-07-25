@@ -1,7 +1,7 @@
 {
   "name": "expo-56",
-  "version": "0.1.0",
-  "description": "Authoritative offline reference for Expo SDK 56 (React Native 0.85, React 19.2, Hermes v1). One skill, 20 bundled API references, covering both building new apps and migrating from SDK 55. Point-in-time snapshot (SDK 56 beta, 2026-05-22).",
+  "version": "0.2.0",
+  "description": "Authoritative, version-pinned offline reference for Expo SDK 56 and SDK 57. One skill, 21 bundled API references, covering both building on either release and the 55→56 / 56→57 migrations. SDK 57 is current (57.0.8, RN 0.86); SDK 56 is the previous supported release (56.0.17, RN 0.85). Audited against expo/expo source 2026-07-25.",
   "author": {
     "name": "Mahdi Salmanzade",
     "url": "https://github.com/mahdi-salmanzade"
@@ -12,10 +12,12 @@
   "keywords": [
     "expo",
     "expo-sdk-56",
+    "expo-sdk-57",
     "react-native",
     "claude-code",
     "claude-skill",
     "expo-router",
-    "eas"
+    "eas",
+    "sdk-migration"
   ]
 }
